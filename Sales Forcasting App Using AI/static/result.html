@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sales Forecast Results</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <style>
+        body { font-family: sans-serif; margin: 20px; background-color: #f4f4f9; color: #333; display: flex; flex-direction: column; align-items: center; }
+        .container { background-color: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 0 15px rgba(0,0,0,0.1); width: 100%; max-width: 900px; margin-bottom: 20px; }
+        h1, h2, h3 { color: #333; text-align: center; }
+        .chart-container { width: 100%; margin-bottom: 30px; max-height: 500px; }
+        .insights-container, .chat-container { margin-top: 20px; padding: 20px; background-color: #e9ecef; border-radius: 4px; border-left: 5px solid #007bff; }
+        .insights-container h2, .chat-container h3 { margin-top: 0; color: #007bff; }
+        .insights-container p, .chat-message p { white-space: pre-wrap; line-height: 1.6; margin:0; }
+        a.back-link { display: inline-block; margin-top: 20px; padding: 10px 15px; background-color: #6c757d; color: white; text-decoration: none; border-radius: 4px; transition: background-color 0.3s ease; }
+        a.back-link:hover { background-color: #5a6268; }
+        .error-message { color: red; font-weight: bold; text-align: center; padding: 15px; border: 1px solid red; background-color: #fdd; border-radius: 4px; }
+        #chatDisplay { max-height: 300px; overflow-y: auto; border: 1px solid #ccc; padding: 10px; margin-bottom: 10px; background-color: #fff; border-radius: 4px; }
+        .chat-message { margin-bottom: 8px; padding: 8px; border-radius: 4px; }
+        .user-message { background-color: #d1ecf1; text-align: right; }
+        .ai-message { background-color: #f8f9fa; }
+        .chat-input-area { display: flex; margin-top: 10px; }
+        #chatInput { flex-grow: 1; padding: 10px; border: 1px solid #ccc; border-radius: 4px 0 0 4px; }
+        #sendChatButton { padding: 10px 15px; background-color: #28a745; color: white; border: none; border-radius: 0 4px 4px 0; cursor: pointer; transition: background-color 0.3s ease; }
+        #sendChatButton:hover { background-color: #218838; }
+        #sendChatButton:disabled { background-color: #aaa; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Sales Forecast Results</h1>
+
+        <div class="chart-container">
+            <h2>Sales Performance & Forecast</h2>
+            <canvas id="forecastChart"></canvas>
+        </div>
+
+        <div class="insights-container">
+            <h2>AI-Generated Business Insights</h2>
+            {% if error_message and not insight %}
+                <p class="error-message">{{ error_message }}</p>
+            {% elif insight and insight.lower().startswith('error:') %}
+                 <p class="error-message">{{ insight }}</p>
+            {% elif insight %}
+                <p id="initialInsightText">{{ insight }}</p>
+            {% else %}
+                <p class="error-message">Could not retrieve initial AI insights or data was insufficient.</p>
+            {% endif %}
+        </div>
+
+        {% if not error_message and (actual_sales_for_chart or future_predictions_for_chart) and insight and not insight.lower().startswith('error:') %}
+        <div class="chat-container">
+            <h3>Continue Chat with AI about this Forecast</h3>
+            <div id="chatDisplay"></div>
+            <div class="chat-input-area">
+                <input type="text" id="chatInput" placeholder="Ask a follow-up question...">
+                <button id="sendChatButton">Send</button>
+            </div>
+        </div>
+        {% else %}
+        <script>
+            document.addEventListener('DOMContentLoaded', function() {
+                const chatContainerDiv = document.querySelector('.chat-container');
+                if(chatContainerDiv && chatContainerDiv.style.display !== 'none' && {{ error_message | tojson }}) { 
+                     chatContainerDiv.style.display = 'none';
+                }
+            });
+        </script>
+        {% endif %}
+        <a href="/" class="back-link">&larr; Back to Input New Data</a>
+    </div>
+
+    <script>
+        let conversationHistory = [];
+        const initialSystemPrompt = "You are a helpful business analyst. The user has just seen a sales forecast (which includes their actual historical data and future predictions) and an initial set of insights. They will now ask follow-up questions related to this forecast and the provided insights.";
+        const forecastForChatContext = {{ forecast | tojson }}; 
+
+        try {
+            const actualSalesData = {{ actual_sales_for_chart | tojson }};
+            const futurePredictionsData = {{ future_predictions_for_chart | tojson }};
+            const chartErrorMessage = {{ error_message | tojson }};
+            const displayAggregation = {{ display_aggregation | tojson }};
+
+            const chartHasData = (actualSalesData && actualSalesData.length > 0) || (futurePredictionsData && futurePredictionsData.length > 0);
+
+            if (chartHasData && !chartErrorMessage) {
+                let xAxisUnit = 'day';
+                let maxTicks = 15; // Default for daily
+                let actualLabel = 'Actual Sales (Smoothed)'; // Default label
+                let predictedLabel = 'Predicted Future Sales';
+
+                if (displayAggregation === 'weekly_sum') {
+                    xAxisUnit = 'week';
+                    maxTicks = 12; 
+                    actualLabel = 'Actual Sales (Weekly Totals)';
+                    predictedLabel = 'Predicted Future (Weekly Totals)';
+                } else if (displayAggregation === 'monthly_sum') {
+                    xAxisUnit = 'month';
+                    maxTicks = 12; 
+                    actualLabel = 'Actual Sales (Monthly Totals)';
+                    predictedLabel = 'Predicted Future (Monthly Totals)';
+                }
+
+
+                const ctx = document.getElementById('forecastChart').getContext('2d');
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        datasets: [
+                            {
+                                label: actualLabel,
+                                data: actualSalesData.map(d => ({x: d.ds, y: d.y})), 
+                                borderColor: 'rgb(25, 25, 112)', 
+                                backgroundColor: 'rgba(25, 25, 112, 0.1)',
+                                tension: 0.4, 
+                                fill: false,
+                                pointRadius: 0, 
+                                pointHoverRadius: 5 
+                            },
+                            {
+                                label: predictedLabel,
+                                data: futurePredictionsData.map(d => ({x: d.ds, y: d.yhat})), 
+                                borderColor: 'rgb(0, 191, 255)', 
+                                backgroundColor: 'rgba(0, 191, 255, 0.1)',
+                                tension: 0.4, 
+                                fill: false, 
+                                pointRadius: 0,
+                                pointHoverRadius: 5
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false, 
+                        scales: {
+                            x: {
+                                type: 'time', 
+                                time: {
+                                    unit: xAxisUnit, 
+                                    tooltipFormat: 'yyyy-MM-dd', 
+                                    displayFormats: { 
+                                        day: 'yyyy-MM-dd',
+                                        week: 'yyyy-MM-dd', 
+                                        month: 'yyyy-MMM'
+                                    }
+                                },
+                                title: { display: true, text: 'Date' },
+                                ticks: { 
+                                    autoSkip: true,
+                                    maxTicksLimit: maxTicks 
+                                }
+                            },
+                            y: {
+                                title: { display: true, text: 'Sales Revenue' },
+                                beginAtZero: false 
+                            }
+                        },
+                        plugins: {
+                            tooltip: { mode: 'index', intersect: false },
+                            legend: { display: true, position: 'top' }
+                        }
+                    }
+                });
+            } else if (!chartErrorMessage) {
+                const chartContainer = document.querySelector('.chart-container');
+                if(chartContainer) chartContainer.innerHTML = '<p class="error-message">No forecast data available to display for the chart.</p>';
+            }
+        } catch (e) {
+            console.error("Error rendering chart:", e);
+            const chartErrorMessageFromJs = {{ error_message | tojson }};
+             if (!chartErrorMessageFromJs) { 
+                const chartContainer = document.querySelector('.chart-container');
+                if(chartContainer) chartContainer.innerHTML = '<p class="error-message">Could not render the sales chart due to a client-side error.</p>';
+            }
+        }
+
+        // Chat functionality
+        const chatDisplay = document.getElementById('chatDisplay');
+        const chatInput = document.getElementById('chatInput');
+        const sendChatButton = document.getElementById('sendChatButton');
+        const initialInsightTextElement = document.getElementById('initialInsightText');
+        const backendErrorMessageForChat = {{ error_message | tojson }}; // From template
+        const initialInsightContent = {{ insight | tojson }}; // From template
+
+        function addMessageToDisplay(message, sender) { 
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('chat-message', sender === 'user' ? 'user-message' : 'ai-message');
+            const p = document.createElement('p');
+            p.textContent = message;
+            messageDiv.appendChild(p);
+            if (chatDisplay) { 
+                 chatDisplay.appendChild(messageDiv);
+                 chatDisplay.scrollTop = chatDisplay.scrollHeight;
+            }
+        }
+        
+        // Initialize chat only if no major error and initial insight is valid
+        if (!backendErrorMessageForChat && initialInsightContent && typeof initialInsightContent === 'string' && !initialInsightContent.toLowerCase().startsWith('error:')) {
+            if (initialInsightTextElement && initialInsightTextElement.textContent.trim()) {
+                conversationHistory.push({ role: "system", content: initialSystemPrompt });
+                const initialInsight = initialInsightTextElement.textContent.trim();
+                addMessageToDisplay("Initial AI Insight: " + initialInsight, 'ai');
+                conversationHistory.push({ role: "assistant", content: initialInsight });
+            }
+        } else {
+             // Hide chat container if there was an error message instead of a valid insight
+            const chatContainerDiv = document.querySelector('.chat-container');
+            if(chatContainerDiv) chatContainerDiv.style.display = 'none';
+        }
+
+        if (sendChatButton) {
+            sendChatButton.addEventListener('click', async () => {
+                const userQuestion = chatInput.value.trim();
+                if (!userQuestion) return;
+                addMessageToDisplay(userQuestion, 'user');
+                conversationHistory.push({ role: "user", content: userQuestion });
+                chatInput.value = '';
+                sendChatButton.disabled = true;
+                try {
+                    const response = await fetch('/chat_with_ai', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ messages: conversationHistory })
+                    });
+                    
+                    const data = await response.json(); 
+
+                    if (!response.ok) { 
+                        throw new Error(data.ai_response || data.detail || `Network error: ${response.status}`); 
+                    }
+                    const aiResponse = data.ai_response;
+                    addMessageToDisplay(aiResponse, 'ai');
+                    conversationHistory.push({ role: "assistant", content: aiResponse });
+                } catch (error) {
+                    console.error('Error during chat:', error);
+                    addMessageToDisplay(`Error: Could not get a response. ${error.message}`, 'ai');
+                } finally {
+                    sendChatButton.disabled = false;
+                }
+            });
+            if (chatInput) { 
+                chatInput.addEventListener('keypress', (event) => { if (event.key === 'Enter' && !sendChatButton.disabled) sendChatButton.click(); });
+            }
+        }
+    </script>
+</body>
+</html>
