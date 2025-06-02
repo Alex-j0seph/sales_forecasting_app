@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sales Forecast Input</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; background-color: #f4f4f9; color: #333; display: flex; flex-direction: column; align-items: center; }
+        .container { background-color: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 0 15px rgba(0,0,0,0.1); width: 100%; max-width: 600px; }
+        h1, h2, h3 { color: #333; text-align: center; }
+        form { display: flex; flex-direction: column; }
+        label { margin-top: 15px; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"], input[type="file"], textarea, select {
+            padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 16px; width: 100%; box-sizing: border-box; margin-bottom: 5px; 
+        }
+        textarea { resize: vertical; min-height: 80px; }
+        .input-group { margin-bottom: 15px; padding: 10px; border: 1px solid #e0e0e0; border-radius: 5px; }
+        .input-group h3 { margin-top: 0; font-size: 1.1em; color: #555; }
+        small { display: block; margin-top: 0px; margin-bottom:10px; color: #777; }
+        button { background-color: #007bff; color: white; padding: 12px 20px; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; margin-top: 20px; transition: background-color 0.3s ease; }
+        button:hover { background-color: #0056b3; }
+        .instructions, .csv-instructions { margin-bottom: 20px; padding: 15px; background-color: #e9ecef; border-radius: 4px; border-left: 5px solid #007bff; }
+        .or-separator { text-align: center; font-weight: bold; font-size: 1.2em; margin: 20px 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Sales Forecasting App</h1>
+        <p style="text-align:center;">Provide your sales data using one of the methods below and choose your display preference for actuals.</p>
+
+        <form action="/result" method="post" enctype="multipart/form-data">
+            
+            <div class="input-group">
+                <h3>Data Input Method</h3>
+                <p><small>Use either CSV upload OR manual text input.</small></p>
+                <label for="csv_file">Option 1: Select CSV File:</label>
+                <input type="file" id="csv_file" name="csv_file" accept=".csv">
+                <div class="csv-instructions" style="margin-top:5px; margin-bottom:0px; padding-top:10px; padding-bottom:10px;">
+                    <small>CSV must have 'Date' and 'Sales_Revenue' (or similar) columns.</small>
+                </div>
+            </div>
+
+            <div class="or-separator">OR</div>
+
+            <div class="input-group">
+                <label for="user_dates">Option 2: Sales Dates (comma-separated):</label>
+                <textarea id="user_dates" name="user_dates" rows="3" placeholder="e.g., 2023-01-01,2023-01-02,2023-01-03"></textarea>
+                <small>Format: YYYY-MM-DD,YYYY-MM-DD,...</small>
+                
+                <label for="user_sales">Sales Revenue (comma-separated):</label>
+                <textarea id="user_sales" name="user_sales" rows="3" placeholder="e.g., 150.50,200,175.75"></textarea>
+                <small>Enter corresponding sales revenue.</small>
+            </div>
+
+            <div class="input-group" style="margin-top: 20px;">
+                <h3>Chart Display Options</h3>
+                <label for="display_aggregation">Display Actual Sales As:</label>
+                <select id="display_aggregation" name="display_aggregation">
+                    <option value="daily_smoothed" selected>Daily (Smoothed)</option>
+                    <option value="weekly_sum">Weekly Totals</option>
+                    <option value="monthly_sum">Monthly Totals</option>
+                </select>
+                <small>This affects how historical actual data is shown on the chart. Predictions will also be aggregated to match.</small>
+            </div>
+            
+            <button type="submit">Get Forecast & Insights</button>
+        </form>
+    </div>
+</body>
+</html>
